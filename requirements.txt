@@ -1,0 +1,5 @@
+requests>=2.31.0
+beautifulsoup4>=4.12.2
+click>=8.1.7
+rich>=13.3.0
+docker>=6.0.0

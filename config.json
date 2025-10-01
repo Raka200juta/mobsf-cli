@@ -1,0 +1,11 @@
+{
+    "mobsf_url": "http://localhost:8000",
+    "username": "mobsf",
+    "password": "mobsf",
+    "session_cookie": "",
+    "default_output": "json",
+    "auto_delete": false,
+    "save_reports": true,
+    "timeout": 300,
+    "max_file_size": 104857600
+}
