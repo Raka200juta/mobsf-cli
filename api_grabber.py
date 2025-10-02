@@ -4,6 +4,7 @@ import requests
 import json
 import time
 import logging
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -16,20 +17,21 @@ def load_config():
         with open(CONFIG_PATH) as f:
             return json.load(f)
     except FileNotFoundError:
-        logger.warning("config.json not found, using defaults")
         return {
-            "mobsf_url": "http://127.0.0.1:8000", 
+            "mobsf_url": "http://localhost:8000", 
             "username": "mobsf", 
             "password": "mobsf",
-            "session_cookie": ""
+            "session_cookie": "",
+            "api_key": ""
         }
     except json.JSONDecodeError as e:
         logger.error(f"Invalid config.json: {e}")
         return {
-            "mobsf_url": "http://127.0.0.1:8000", 
+            "mobsf_url": "http://localhost:8000", 
             "username": "mobsf", 
             "password": "mobsf",
-            "session_cookie": ""
+            "session_cookie": "",
+            "api_key": ""
         }
 
 def save_config(config):
@@ -37,7 +39,6 @@ def save_config(config):
     try:
         with open(CONFIG_PATH, 'w') as f:
             json.dump(config, f, indent=2)
-        logger.info("Config saved successfully")
         return True
     except Exception as e:
         logger.error(f"Failed to save config: {e}")
@@ -50,9 +51,9 @@ def wait_for_mobsf_ready(timeout=120):
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
-            response = requests.get("http://127.0.0.1:8000/api_docs", timeout=10)
+            response = requests.get("http://localhost:8000/login/", timeout=10)
             if response.status_code == 200:
-                logger.info("✅ MobSF API docs are accessible")
+                logger.info("✅ MobSF login page is accessible")
                 return True
         except Exception as e:
             logger.debug(f"⏳ Still waiting... {e}")
@@ -63,34 +64,23 @@ def wait_for_mobsf_ready(timeout=120):
     return False
 
 def login_to_mobsf(username, password):
-    """Login to MobSF and get session cookie"""
+    """Login to MobSF and return session"""
     try:
         logger.info(f"🔐 Logging in as {username}...")
         
-        # Create session to maintain cookies
         session = requests.Session()
         
-        # First, get the login page to obtain CSRF token
-        logger.info("📋 Getting login page...")
-        login_page = session.get("http://127.0.0.1:8000/login/", timeout=10)
+        # Get login page for CSRF token
+        login_page = session.get("http://localhost:8000/login/", timeout=10)
         
-        # Debug: print available cookies
-        logger.debug(f"Initial cookies: {dict(session.cookies)}")
-        
-        # Extract CSRF token from the form
-        import re
+        # Extract CSRF token
         csrf_match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', login_page.text)
-        
         if not csrf_match:
-            # Try alternative pattern
-            csrf_match = re.search(r'csrfmiddlewaretoken["\']?\\s*[:=]\\s*["\']([^"\']+)["\']', login_page.text)
-            if not csrf_match:
-                logger.error("❌ CSRF token not found in login page")
-                logger.debug(f"Login page snippet: {login_page.text[:500]}")
-                return None
+            logger.error("❌ CSRF token not found")
+            return None, None
         
         csrf_token = csrf_match.group(1)
-        logger.info(f"✅ CSRF token found: {csrf_token[:20]}...")
+        logger.info(f"✅ CSRF token: {csrf_token[:20]}...")
         
         # Prepare login data
         login_data = {
@@ -99,105 +89,133 @@ def login_to_mobsf(username, password):
             'csrfmiddlewaretoken': csrf_token
         }
         
-        # Set required headers
         headers = {
-            'Referer': 'http://127.0.0.1:8000/login/',
+            'Referer': 'http://localhost:8000/login/',
             'Content-Type': 'application/x-www-form-urlencoded',
         }
         
-        # Perform login
-        logger.info("📤 Sending login request...")
+        # Perform login (follow redirects to /api_docs)
         login_response = session.post(
-            "http://127.0.0.1:8000/login/",
+            "http://localhost:8000/login/?next=/api_docs",
             data=login_data,
             headers=headers,
             timeout=10,
-            allow_redirects=True  # Follow redirects to see final response
+            allow_redirects=True  # Follow redirect to /api_docs
         )
         
-        # Debug: print all cookies after login
-        logger.debug(f"Cookies after login: {dict(session.cookies)}")
-        
-        # Check if login was successful by looking for session cookie
-        session_cookie = None
-        
-        # Try multiple possible cookie names
-        possible_cookie_names = ['sessionid', 'session', 'session_id', 'mobsf_session']
-        for cookie_name in possible_cookie_names:
-            if cookie_name in session.cookies:
-                session_cookie = session.cookies.get(cookie_name)
-                logger.info(f"✅ Found session cookie '{cookie_name}': {session_cookie[:20]}...")
-                break
-        
-        if not session_cookie:
-            # If no named cookie found, try to get the first cookie
-            cookies_dict = dict(session.cookies)
-            if cookies_dict:
-                first_cookie_name = list(cookies_dict.keys())[0]
-                session_cookie = cookies_dict[first_cookie_name]
-                logger.info(f"✅ Using first available cookie '{first_cookie_name}': {session_cookie[:20]}...")
+        # Check if login was successful
+        if login_response.status_code == 200 and 'api_docs' in login_response.url:
+            logger.info("✅ Login successful! Redirected to API docs")
+            
+            # Get session cookie
+            session_cookie = session.cookies.get('sessionid')
+            if session_cookie:
+                logger.info(f"✅ Session cookie: {session_cookie[:20]}...")
+                return session, session_cookie
             else:
-                logger.error("❌ No cookies found after login")
-                logger.debug(f"Login response status: {login_response.status_code}")
-                logger.debug(f"Login response headers: {dict(login_response.headers)}")
-                return None
-        
-        # Verify login by accessing a protected page
-        logger.info("🔍 Verifying login...")
-        test_response = session.get("http://127.0.0.1:8000/", timeout=10)
-        
-        if test_response.status_code == 200 and "MobSF" in test_response.text:
-            logger.info("✅ Login verification successful!")
-            return session_cookie
+                logger.error("❌ No session cookie found")
+                return None, None
         else:
-            logger.error("❌ Login verification failed")
-            return None
+            logger.error(f"❌ Login failed or not redirected to API docs. Status: {login_response.status_code}")
+            logger.debug(f"Final URL: {login_response.url}")
+            return None, None
             
     except Exception as e:
         logger.error(f"❌ Login error: {e}")
+        return None, None
+
+def extract_api_key_from_docs(session):
+    """Extract API key from /api_docs page after login"""
+    try:
+        logger.info("📖 Accessing API docs after login...")
+        
+        # Access API docs with authenticated session
+        api_docs_response = session.get("http://localhost:8000/api_docs", timeout=10)
+        
+        if api_docs_response.status_code == 200:
+            logger.info("✅ Successfully accessed API docs")
+            
+            # Save API docs content for debugging
+            with open("api_docs_authenticated.html", "w", encoding='utf-8') as f:
+                f.write(api_docs_response.text)
+            logger.info("✅ Authenticated API docs saved to api_docs_authenticated.html")
+            
+            # Look for API key in various formats
+            patterns = [
+                r'"api_key"\s*:\s*"([a-f0-9]{64})"',
+                r"'api_key'\s*:\s*'([a-f0-9]{64})'",
+                r"API_KEY\s*[=:]\s*'([a-f0-9]{64})",
+                r'API_KEY\s*[=:]\s*"([a-f0-9]{64})',
+                r"api_key\s*[=:]\s*['\"]([a-f0-9]{64})['\"]",
+                r"default.*['\"]([a-f0-9]{64})['\"]",
+                r"value.*['\"]([a-f0-9]{64})['\"]",
+                r"example.*['\"]([a-f0-9]{64})['\"]",
+            ]
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, api_docs_response.text, re.IGNORECASE)
+                if matches:
+                    api_key = matches[0]
+                    logger.info(f"✅ API key found: {api_key[:16]}...")
+                    return api_key
+            
+            # Look for any 64-character hex string
+            hex_pattern = r'\b[a-f0-9]{64}\b'
+            hex_matches = re.findall(hex_pattern, api_docs_response.text, re.IGNORECASE)
+            if hex_matches:
+                logger.info(f"✅ Found hex strings: {hex_matches[:3]}")
+                # Use the first one as potential API key
+                potential_key = hex_matches[0]
+                logger.info(f"✅ Using as API key: {potential_key[:16]}...")
+                return potential_key
+            
+            # If no API key found, check the content
+            logger.error("❌ API key not found in authenticated API docs")
+            logger.info("📋 Checking API docs content structure...")
+            
+            # Look for any mention of api_key
+            api_key_mentions = re.findall(r'api[\s_-]*key[^"]*"?[^"]*"?', api_docs_response.text, re.IGNORECASE)
+            for mention in api_key_mentions[:5]:
+                logger.info(f"   API key mention: {mention[:100]}...")
+            
+            return None
+        else:
+            logger.error(f"❌ Failed to access API docs: {api_docs_response.status_code}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ Error accessing API docs: {e}")
         return None
 
-def test_api_with_session(session_cookie):
-    """Test if we can access API with session cookie"""
+def test_api_key(api_key, session_cookie=None):
+    """Test if the API key works"""
     try:
-        headers = {
-            'Cookie': f'sessionid={session_cookie}',
-        }
+        logger.info("🧪 Testing API key...")
         
+        headers = {'Authorization': api_key}
+        if session_cookie:
+            headers['Cookie'] = f'sessionid={session_cookie}'
+        
+        # Test with scans endpoint (read-only GET request)
         response = requests.get(
-            "http://127.0.0.1:8000/api/v1/upload", 
+            "http://localhost:8000/api/v1/scans", 
             headers=headers, 
             timeout=10
         )
         
         if response.status_code == 200:
-            logger.info("✅ API access successful with session")
+            logger.info("✅ API key works!")
             return True
         else:
-            # Try alternative cookie name
-            headers = {
-                'Cookie': f'{session_cookie}',
-            }
-            response = requests.get(
-                "http://127.0.0.1:8000/api/v1/upload", 
-                headers=headers, 
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                logger.info("✅ API access successful with raw cookie")
-                return True
-            else:
-                logger.error(f"❌ API test failed: {response.status_code}")
-                return False
+            logger.error(f"❌ API key test failed: {response.status_code}")
+            return False
             
     except Exception as e:
         logger.error(f"❌ API test error: {e}")
         return False
 
 def grab_api_key():
-    """Main function - now handles login instead of API key"""
-    # Wait for MobSF to be ready
+    """Main function - login and extract API key from docs"""
     if not wait_for_mobsf_ready():
         return None
     
@@ -205,20 +223,28 @@ def grab_api_key():
     username = config.get('username', 'mobsf')
     password = config.get('password', 'mobsf')
     
-    # Try to login
-    session_cookie = login_to_mobsf(username, password)
+    # Login to MobSF
+    session, session_cookie = login_to_mobsf(username, password)
+    if not session or not session_cookie:
+        return None
     
-    if session_cookie:
-        # Test the session
-        if test_api_with_session(session_cookie):
-            # Save session to config
-            config['session_cookie'] = session_cookie
-            if save_config(config):
-                logger.info("✅ Session saved to config")
-            return session_cookie
-        else:
-            logger.error("❌ Session test failed")
-            return None
+    # Extract API key from authenticated API docs
+    api_key = extract_api_key_from_docs(session)
+    if not api_key:
+        return None
+    
+    # Test the API key
+    if test_api_key(api_key, session_cookie):
+        logger.info("✅ API authentication successful!")
+        
+        # Save to config
+        config['session_cookie'] = session_cookie
+        config['api_key'] = api_key
+        
+        if save_config(config):
+            logger.info("✅ Credentials saved to config")
+        
+        return api_key
     else:
-        logger.error("❌ Failed to authenticate with MobSF")
+        logger.error("❌ API key test failed")
         return None
