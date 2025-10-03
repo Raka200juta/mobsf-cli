@@ -1,0 +1,80 @@
+{
+  "api": {
+    "upload": "/api/v1/upload",
+    "scan": "/api/v1/scan",
+    "report_json": "/api/v1/report_json",
+    "scans": "/api/v1/scans",
+    "behavior": "/api/v1/behavior",
+    "view_source": "/api/v1/view_source",
+    "compare": "/api/v1/compare",
+    "scorecard": "/api/v1/scorecard",
+    "delete_scan": "/api/v1/delete_scan",
+    "scan_logs": "/api/v1/scan_logs",
+    "tasks": "/api/v1/tasks",
+    "download_pdf": "/api/v1/download_pdf",
+    "search": "/api/v1/search"
+  },
+  "views": {
+    "android": {
+      "manifest_view": "/manifest_view/{hash}",
+      "source_tree": "/source_code/",
+      "find": "/find/",
+      "view_source": "/view_file/"
+    },
+    "ios": {
+      "view_source": "/view_file_ios/",
+      "ios_view_report": "/ios_view_report/{bundle_id}"
+    },
+    "windows": {
+      "staticanalyzer_windows": "/static_analyzer_windows/{hash}"
+    },
+    "shared": {
+      "pdf": "/pdf/{hash}/",
+      "appsec_dashboard": "/appsec_dashboard/{hash}/",
+      "compare": "/compare/{hash1}/{hash2}/",
+      "scan_library": "/scan_library/{hash}"
+    }
+  },
+  "dynamic": {
+    "android": {
+      "dynamic_analysis": "/android/dynamic_analysis/",
+      "dynamic_analyzer": "/android_dynamic/{hash}",
+      "dynamic_report": "/dynamic_report/{hash}",
+      "dynamic_view_file": "/dynamic_view_file/",
+      "logcat": "/logcat/",
+      "trigger_static_analysis": "/static_scan/{hash}",
+      "run_apk": "/run_apk/",
+      "mobsfy": "/mobsfy/",
+      "take_screenshot": "/screenshot/",
+      "execute_adb": "/execute_adb/",
+      "screen_cast": "/screen_cast/",
+      "touch": "/touch_events/",
+      "get_component": "/get_component/",
+      "mobsf_ca": "/mobsf_ca/",
+      "global_proxy": "/global_proxy/",
+      "activity_tester": "/activity_tester/",
+      "start_activity": "/start_activity/",
+      "start_deeplink": "/start_deeplink/",
+      "download_data": "/download_data/",
+      "collect_logs": "/collect_logs/",
+      "tls_tests": "/tls_tests/"
+    },
+    "ios": {
+      "dynamic_analysis": "/ios/dynamic_analysis/",
+      "dynamic_analyzer": "/ios/dynamic_analyzer/",
+      "run_app": "/ios/run_app/",
+      "remove_app": "/ios/remove_app/",
+      "take_screenshot": "/ios/take_screenshot/",
+      "network_capture": "/ios/network_capture/",
+      "live_pcap_download": "/ios/live_pcap_download/",
+      "ssh_execute": "/ios/ssh_execute/",
+      "download_data": "/ios/download_data/{bundle_id}",
+      "touch": "/ios/touch/",
+      "get_container_path": "/ios/get_container_path/",
+      "system_logs": "/ios/system_logs/",
+      "upload_file": "/ios/upload_file/",
+      "download_file": "/ios/download_file/",
+      "ios_view_report": "/ios/view_report/{bundle_id}"
+    }
+  }
+}
